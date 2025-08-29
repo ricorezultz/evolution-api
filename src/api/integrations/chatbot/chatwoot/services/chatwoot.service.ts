@@ -43,6 +43,19 @@ interface ChatwootMessage {
 export class ChatwootService {
   private readonly logger = new Logger('ChatwootService');
 
+  /**
+   * Retorna o identificador roteável, priorizando JID (ex.: ...@lid, ...@s.whatsapp.net, ...@g.us).
+   * Fallback para phone_number (sem '+') apenas se JID não existir.
+   */
+  private getRoutableIdFromBody(body: any): string {
+    const sourceId = body?.conversation?.contact_inbox?.source_id;
+    if (sourceId && /@(?:lid|s\.whatsapp\.net|g\.us)$/.test(sourceId)) return sourceId;
+    const identifier = body?.conversation?.meta?.sender?.identifier;
+    if (identifier && /@(?:lid|s\.whatsapp\.net|g\.us)$/.test(identifier)) return identifier;
+    const phone = body?.conversation?.meta?.sender?.phone_number?.replace('+', '');
+    return phone;
+  }
+
   private provider: any;
 
   constructor(
@@ -385,21 +398,21 @@ export class ChatwootService {
       let tagId = tagData?.id;
       const taggingsCount = tagData?.taggings_count || 0;
 
-      const sqlTag = `INSERT INTO tags (name, taggings_count) 
-                      VALUES ($1, $2) 
-                      ON CONFLICT (name) 
-                      DO UPDATE SET taggings_count = tags.taggings_count + 1 
+      const sqlTag = `INSERT INTO tags (name, taggings_count)
+                      VALUES ($1, $2)
+                      ON CONFLICT (name)
+                      DO UPDATE SET taggings_count = tags.taggings_count + 1
                       RETURNING id`;
 
       tagId = (await this.pgClient.query(sqlTag, [nameInbox, taggingsCount + 1]))?.rows[0]?.id;
 
-      const sqlCheckTagging = `SELECT 1 FROM taggings 
+      const sqlCheckTagging = `SELECT 1 FROM taggings
                                WHERE tag_id = $1 AND taggable_type = 'Contact' AND taggable_id = $2 AND context = 'labels' LIMIT 1`;
 
       const taggingExists = (await this.pgClient.query(sqlCheckTagging, [tagId, contactId]))?.rowCount > 0;
 
       if (!taggingExists) {
-        const sqlInsertLabel = `INSERT INTO taggings (tag_id, taggable_type, taggable_id, context, created_at) 
+        const sqlInsertLabel = `INSERT INTO taggings (tag_id, taggable_type, taggable_id, context, created_at)
                                 VALUES ($1, 'Contact', $2, 'labels', NOW())`;
 
         await this.pgClient.query(sqlInsertLabel, [tagId, contactId]);
@@ -1239,6 +1252,7 @@ export class ChatwootService {
     });
   }
 
+
   public async receiveWebhook(instance: InstanceDto, body: any) {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1268,15 +1282,15 @@ export class ChatwootService {
         return { message: 'bot' };
       }
 
-      const chatId =
-        body.conversation.meta.sender?.identifier || body.conversation.meta.sender?.phone_number.replace('+', '');
-      // Chatwoot to Whatsapp
-      const messageReceived = body.content
-        ? body.content
-            .replaceAll(/(?<!\*)\*((?!\s)([^\n*]+?)(?<!\s))\*(?!\*)/g, '_$1_') // Substitui * por _
-            .replaceAll(/\*{2}((?!\s)([^\n*]+?)(?<!\s))\*{2}/g, '*$1*') // Substitui ** por *
-            .replaceAll(/~{2}((?!\s)([^\n*]+?)(?<!\s))~{2}/g, '~$1~') // Substitui ~~ por ~
-            .replaceAll(/(?<!`)`((?!\s)([^`*]+?)(?<!\s))`(?!`)/g, '```$1```') // Substitui ` por ```
+        // 🔁 Chatwoot → Evolution: sempre priorizar JID
+        const chatId = this.getRoutableIdFromBody(body);
+        // ✅ Conversão de formatação apenas para Chatwoot → WhatsApp
+        const messageReceived = body.content
+          ? body.content
+              .replaceAll(/(?<!\*)\*((?!\s)([^\n*]+?)(?<!\s))\*(?!\*)/g, '_$1_')    // *texto*  → _texto_
+              .replaceAll(/\*{2}((?!\s)([^\n*]+?)(?<!\s))\*{2}/g, '*$1*')          // **texto** → *texto*
+              .replaceAll(/~{2}((?!\s)([^\n*]+?)(?<!\s))~{2}/g, '~$1~')            // ~~texto~~ → ~texto~
+              .replaceAll(/(?<!`)`((?!\s)([^`*]+?)(?<!\s))`(?!`)/g, '```$1```')    // `codigo` → ```codigo```
         : body.content;
 
       const senderName = body?.conversation?.messages[0]?.sender?.available_name || body?.sender?.name;
@@ -1966,12 +1980,13 @@ export class ChatwootService {
           };
         }
 
+        // ✅ WhatsApp → Chatwoot: converte marcas do WA para markdown do Chatwoot
         const originalMessage = await this.getConversationMessage(body.message);
         const bodyMessage = originalMessage
           ? originalMessage
-              .replaceAll(/\*((?!\s)([^\n*]+?)(?<!\s))\*/g, '**$1**')
-              .replaceAll(/_((?!\s)([^\n_]+?)(?<!\s))_/g, '*$1*')
-              .replaceAll(/~((?!\s)([^\n~]+?)(?<!\s))~/g, '~~$1~~')
+              .replaceAll(/\*((?!\s)([^\n*]+?)(?<!\s))\*/g, '**$1**')  // *texto*  → **texto**
+              .replaceAll(/_((?!\s)([^\n_]+?)(?<!\s))_/g, '*$1*')      // _texto_  → *texto*
+              .replaceAll(/~((?!\s)([^\n~]+?)(?<!\s))~/g, '~~$1~~')    // ~texto~  → ~~texto~~
           : originalMessage;
 
         if (bodyMessage && bodyMessage.includes('/survey/responses/') && bodyMessage.includes('http')) {
