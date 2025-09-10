@@ -1252,6 +1252,7 @@ export class ChatwootService {
     });
   }
 
+
   public async receiveWebhook(instance: InstanceDto, body: any) {
     try {
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1281,15 +1282,15 @@ export class ChatwootService {
         return { message: 'bot' };
       }
 
-      // 🔁 Chatwoot → Evolution: sempre priorizar JID
-      const chatId = this.getRoutableIdFromBody(body);
-      // ✅ Conversão de formatação apenas para Chatwoot → WhatsApp
-      const messageReceived = body.content
-        ? body.content
-            .replaceAll(/(?<!\*)\*((?!\s)([^\n*]+?)(?<!\s))\*(?!\*)/g, '_$1_') // *texto*  → _texto_
-            .replaceAll(/\*{2}((?!\s)([^\n*]+?)(?<!\s))\*{2}/g, '*$1*') // **texto** → *texto*
-            .replaceAll(/~{2}((?!\s)([^\n*]+?)(?<!\s))~{2}/g, '~$1~') // ~~texto~~ → ~texto~
-            .replaceAll(/(?<!`)`((?!\s)([^`*]+?)(?<!\s))`(?!`)/g, '```$1```') // `codigo` → ```codigo```
+        // 🔁 Chatwoot → Evolution: sempre priorizar JID
+        const chatId = this.getRoutableIdFromBody(body);
+        // ✅ Conversão de formatação apenas para Chatwoot → WhatsApp
+        const messageReceived = body.content
+          ? body.content
+              .replaceAll(/(?<!\*)\*((?!\s)([^\n*]+?)(?<!\s))\*(?!\*)/g, '_$1_')    // *texto*  → _texto_
+              .replaceAll(/\*{2}((?!\s)([^\n*]+?)(?<!\s))\*{2}/g, '*$1*')          // **texto** → *texto*
+              .replaceAll(/~{2}((?!\s)([^\n*]+?)(?<!\s))~{2}/g, '~$1~')            // ~~texto~~ → ~texto~
+              .replaceAll(/(?<!`)`((?!\s)([^`*]+?)(?<!\s))`(?!`)/g, '```$1```')    // `codigo` → ```codigo```
         : body.content;
 
       const senderName = body?.conversation?.messages[0]?.sender?.available_name || body?.sender?.name;
@@ -1983,9 +1984,9 @@ export class ChatwootService {
         const originalMessage = await this.getConversationMessage(body.message);
         const bodyMessage = originalMessage
           ? originalMessage
-              .replaceAll(/\*((?!\s)([^\n*]+?)(?<!\s))\*/g, '**$1**') // *texto*  → **texto**
-              .replaceAll(/_((?!\s)([^\n_]+?)(?<!\s))_/g, '*$1*') // _texto_  → *texto*
-              .replaceAll(/~((?!\s)([^\n~]+?)(?<!\s))~/g, '~~$1~~') // ~texto~  → ~~texto~~
+              .replaceAll(/\*((?!\s)([^\n*]+?)(?<!\s))\*/g, '**$1**')  // *texto*  → **texto**
+              .replaceAll(/_((?!\s)([^\n_]+?)(?<!\s))_/g, '*$1*')      // _texto_  → *texto*
+              .replaceAll(/~((?!\s)([^\n~]+?)(?<!\s))~/g, '~~$1~~')    // ~texto~  → ~~texto~~
           : originalMessage;
 
         if (bodyMessage && bodyMessage.includes('/survey/responses/') && bodyMessage.includes('http')) {
